@@ -1,0 +1,71 @@
+.include "8clocks.jsim"
+.include "nominal.jsim"
+.include "stdcell.jsim"
+
+* Function = ABC + DE + FG
+* I derived the equation by first
+* remembering that a NAND is a NAND with an inverted outputs
+* ABC = (ABC)''
+* Remember that (A' * B' * C')' = A + B + C via de Morgan's Law
+* With these in mind, we have the primes needed to negate our NANDs
+* and a way to OR our statements.
+* These gives us F = ((ABC)' * (DE)' * (FG)')'
+
+.subckt fx a b c d e f g out
+    Xabc a b c abc nand3
+    Xde d e de nand2
+    Xfg f g fg nand2
+    Xfx abc de fg out nand3
+.ends
+
+
+* Full Adder implementation
+* I derived the formula of the sum and carry_out by using a truth table as indicated below.
+* Source: https://www.javatpoint.com/full-adder-in-digital-electronics
+* A | B | C | Sum | Carry
+* 0 | 0 | 0 | 0   | 0
+* 0 | 0 | 1 | 1   | 0
+* 0 | 1 | 0 | 1   | 0
+* 0 | 1 | 1 | 0   | 1
+* 1 | 0 | 0 | 1   | 0
+* 1 | 0 | 1 | 0   | 1
+* 1 | 1 | 0 | 0   | 1
+* 1 | 1 | 1 | 1   | 1
+* Using a K-Map where C is the carry_in, I got the equation:
+* sum = A XOR B XOR C
+* carry_out = AB + AC + BC
+* I verified my K-maps using the source's. 
+* refer to .subckt fx explanation on a three input OR using NAND gates 
+
+.subckt fa a b c_in sum c_out
+* Sum implementation
+    Xabsum a b absum xor2
+    Xsum absum c_in sum xor2
+
+* Carry implementation
+* c_out = carry out
+    Xab a b ab nand2
+    Xac a c_in ac nand2
+    Xbc b c_in bc nand2
+    Xcout ab ac bc c_out nand3
+.ends  
+
+Xfx clk1 clk2 clk3 clk4 clk5 clk6 clk7 out fx
+Xfa clk5 clk6 clk7 sum carry fa
+
+* I used 640ns 
+* To get the number of ns, we can use the formula: (2^n-1) * 10 
+* where n is the number of inputs.
+* In 10 ns, we are able to show two truth values.
+* Considering that there are 2^n values, the formula gives us enough to represent the total number of values.
+.tran 640ns
+.plot clk1
+.plot clk2
+.plot clk3
+.plot clk4
+.plot clk5
+.plot clk6
+.plot clk7
+.plot out
+.plot sum
+.plot carry
