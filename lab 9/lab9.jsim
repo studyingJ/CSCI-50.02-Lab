@@ -95,20 +95,28 @@
 *******************************************************************************
 
 
-***********************
-*** Jump Target (JT)***
-***********************
+*************************
+**** Jump Target (JT) ***
+*************************
 Xjump rd1_[31:0] JT[31:0] join
+
+****************************
+*** Program Counter (PC) ***
+****************************
+Xpc_plus4   0#23 pc[8:0] 0#29 const1 0#2 0 pc_plus4[31:0] idc[31:0] add32
+Xpc_reset   reset#32 0#32 pc_plus4[31:0] pc_reset[31:0] mux2
+
+***************************
+**** Branch Target (JT) ***
+***************************
+Xshift_c    0#16 c[15:0] 0#3 const1 0#3 shifted_c[31:0] shift32
+Xbranch_target  pc_plus4[31:0] shifted_c[31:0] 0 branch_target[31:0] trash[31:0] add32
 
 **********************
 ***** PCSEL Mux  *****
 **********************
 Xconstant1 const1 contant1
-Xpcsel_mux pcsel#0 pcsel#1 pc_plus4[31:0] branch_target[31:0] JT[31:0] d3 pcsel_out[31:0] mux4
-
-Xpc_plus4   0#23 pc[8:0] 0#29 const1 0#2 0 pc_plus4[31:0] idc[31:0] add32
-Xshift_c    0#16 c[15:0] 0#3 const1 0#3 shifted_c[31:0] shift32
-Xbranch_target  pc_plus4[31:0] shifted_c[31:0] 0 branch_target[31:0] trash[31:0] add32
+Xpcsel_mux pcsel#0 pcsel#1 pc_plus4[31:0] branch_target[31:0] JT[31:0] pc_reset[31:0] pcsel_out[31:0] mux4
 
 
 ************************
@@ -129,6 +137,13 @@ Xbsel   bsel#32 rd2_[31:0] 0#16 c[15:0]  bsel_out[31:0] mux2
 Xalu    JT[31:0] bsel_out[31:0] alufn[5:0] alu[31:0] alu32
 Xwdsel  wdsel0#32 wdsel1#32 pc_plus4[31:0] alu[31:0] memrd[31:0] idc[31:0] mux4
 
+
+******************
+***** Z Nor  *****
+******************
+Xz_nor rd1_[31:24] rd1_[23:16] rd1_[15:8] rd1_[7:0] z_nor[7:0] nor4
+Xz_nor_nand z_nor[7:6] z_nor[5:4] z_nor[3:2] z_nor[1:0] z_nor_nand[1:0] nand4
+xz_out  z_nor_nand[1:0] z_out nor2
 
 Wreset reset nrz(0, 5, 10ns, 0ns, 0.001ns, 0.001ns) 
 + 1 0
