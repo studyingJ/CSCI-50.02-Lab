@@ -1,0 +1,295 @@
+.include "8clocks.jsim"
+.include "nominal.jsim"
+.include "stdcell.jsim"
+
+*******************************************************************************
+*******************************************************************************
+*   import everything from latest lab
+
+********** Full Adder **********
+.subckt fa a b c_in sum c_out
+    Xabsum a b absum xor2
+    Xsum absum c_in sum xor2
+
+    Xab a b ab nand2
+    Xac absum c_in AXorB_NandC nand2
+    Xcout ab AXorB_NandC c_out nand2
+.ends  
+
+********** 32-bit adder **********
+.subckt add32 a[31:0] b[31:0] c_in0 sum[31:0] c_out[31:30]
+    Xadd a[31:0] b[31:0]  c_out[30:0] c_in0 sum[31:0] c_out[31:0] fa
+.ends
+
+********** 32-bit adder/subtractor **********
+.subckt as32 a[31:0] b[31:0] op0 fas[31:0] n v z
+    .connect op0 op0#[31:0]
+    Xinv    b[31:0] binv[31:0] inverter
+    Xmuxb   op0#[31:0] b[31:0] binv[31:0] bfinal[31:0] mux2
+    Xadd32 a[31:0] bfinal[31:0] op0 fas[31:0] c_out[31:30] add32
+    .connect fas31 n
+    Xoverflow  c_out31 c_out30 v xor2
+
+    Xnor4   fas[31:24] fas[23:16] fas[15:8] fas[7:0] fas_nor[7:0] nor4
+    Xnand4  fas_nor[7:6] fas_nor[5:4] fas_nor[3:2] fas_nor[1:0] zero#[1:0] nand4
+    Xz      zero#[1:0] z nor2
+.ends
+
+********** 32-bit comparator **********
+.subckt cmp32 n v z op[2:1] fcmp[31:0]
+  Xcst fcmp[31:1] constant0  
+  Xinv n n_inv inverter
+  Xmux v n n_inv n_in mux2
+  Xor z n_in leq or2
+  Xout op1 op2 0 z n_in leq fcmp0 mux4
+.ends
+
+********** 32-bit boolean **********
+.subckt bool32 a[31:0] b[31:0] op[3:0] fbool[31:0]
+    Xmux4 a[31:0] b[31:0] op0#32 op1#32 op2#32 op3#32 fbool[31:0] mux4
+.ends
+
+********** 32 bit shifter **********
+.subckt shift32 a[31:0] b[4:0] op[1:0] fshift[31:0]
+    .connect 0 gnd[31:0]
+    .connect a31 a_31#[31:15]
+    .connect op0 op0_[31:0]
+
+    *source: https://web.mit.edu/mokang/Public/proj3.jsim
+    *used to determine whether arithmethic or logical shift right
+    Xarithmetic op1 a31 arithmethic and2
+    .connect arithmethic arithmethic_[31:0]
+
+    Xleft_16   b4#32 a[31:0] a[15:0] gnd[31:16] left_16#[31:0] mux2
+    Xleft_8    b3#32 left_16#[31:0] left_16#[23:0] gnd[7:0] left_8#[31:0] mux2
+    Xleft_4    b2#32 left_8#[31:0] left_8#[27:0] gnd[3:0] left_4#[31:0] mux2
+    Xleft_2    b1#32 left_4#[31:0] left_4#[29:0] gnd[1:0] left_2#[31:0] mux2
+    Xleft_1    b0#32 left_2#[31:0] left_2#[30:0] gnd0 shl[31:0] mux2
+    
+    Xright_16  b4#32 a[31:0] arithmethic_[31:16] a[31:16] right_16#[31:0] mux2
+    Xright_8   b3#32 right_16#[31:0] arithmethic_[31:24] right_16#[31:8] right_8#[31:0] mux2
+    Xright_4   b2#32 right_8#[31:0] arithmethic_[31:28] right_8#[31:4] right_4#[31:0] mux2
+    Xright_2   b1#32 right_4#[31:0] arithmethic_[31:30] right_4#[31:2] right_2#[31:0] mux2
+    Xright_1   b0#32 right_2#[31:0] arithmethic right_2#[31:1] shr[31:0] mux2
+    Xfshift    op0_[31:0] shl[31:0] shr[31:0] fshift[31:0] mux2
+.ends
+
+********** 32 bit ALU **********
+.subckt alu32 a[31:0] b[31:0] alufn[5:0] f[31:0]
+    /*
+    other subcircuit instantiation    
+    alufn[3:0] put into corresponding op[3:0]
+    */
+    .connect alufn4 alufn4_[31:0]
+    .connect alufn5 alufn5_[31:0]
+    Xas32 a[31:0] b[31:0] alufn0 fas[31:0] n v z as32
+    Xcmp32 n v z alufn[2:1] fcmp[31:0] cmp32
+    Xbool32 a[31:0] b[31:0] alufn[3:0] fbool[31:0] bool32
+    Xshift32 a[31:0] b[4:0] alufn[1:0] fshift[31:0] shift32
+    *deciding final output
+    Xmux4 alufn4_[31:0] alufn5_[31:0] fas[31:0] fbool[31:0] fshift[31:0] fcmp[31:0] f[31:0] mux4
+.ends
+
+*   end import
+*******************************************************************************
+*******************************************************************************
+
+
+***********************
+*** Jump Target (JT)***
+***********************
+Xjump rd1_[31:0] JT[31:0] join
+
+**********************
+***** PCSEL Mux  *****
+**********************
+Xconstant1 const1 contant1
+Xpcsel_mux pcsel#0 pcsel#1 pc_plus4[31:0] branch_target[31:0] JT[31:0] d3 pcsel_out[31:0] mux4
+
+Xpc_plus4   0#23 pc[8:0] 0#29 const1 0#2 0 pc_plus4[31:0] idc[31:0] add32
+Xshift_c    0#16 c[15:0] 0#3 const1 0#3 shifted_c[31:0] shift32
+Xbranch_target  pc_plus4[31:0] shifted_c[31:0] 0 branch_target[31:0] trash[31:0] add32
+
+
+************************
+****** RA2SEL Mux ******
+************************
+Xra2sel ra2sel#5 rb[4:0] rc[4:0] ra2sel_out[5:0] mux2
+
+
+************************
+******* BSEL Mux *******
+************************
+Xbsel   bsel#32 rd2_[31:0] 0#16 c[15:0]  bsel_out[31:0] mux2
+
+
+***********************
+****** WDSEL Mux ******
+***********************
+Xalu    JT[31:0] bsel_out[31:0] alufn[5:0] alu[31:0] alu32
+Xwdsel  wdsel0#32 wdsel1#32 pc_plus4[31:0] alu[31:0] memrd[31:0] idc[31:0] mux4
+
+
+Wreset reset nrz(0, 5, 10ns, 0ns, 0.001ns, 0.001ns) 
++ 1 0
+
+/*
+wr | reset | wr_reset
+0  | 0     | 0
+0  | 1     | 0
+1  | 0     | 1
+1  | 1     | 0
+
+*/
+Xreset_inv  reset reset_inv inverter
+Xwr_reset   wr reset_inv wr_reset and2
+
+Xmemory  vdd  0    0   pc[8:2]    inst[31:0]
++        vdd  0    0   mema[8:2]  memrd[31:0]
++        0    clk  wr_reset  mema[8:2]  memwd[31:0]
++ $memory width=32 nlocations=128 file="lab7_problem_1.bin"
+
+
+/*
+werf_   | reset | werf_reset
+0       |   0   |   0
+0       |   1   |   0
+1       |   0   |   0
+1       |   1   |   1
+*/
+Xwerf_partial_all1 wa[4:1] partial and4
+Xfwerf_full_all1    partial wa0 werf_all1 and2
+Xfinal_werf         werf_all1 werf 0 werf_ mux2
+Xwerf_reset         werf_ reset werf_reset and2
+
+Xregisters  vdd  0    0      ra1_[4:0]  rd1_[31:0]
++           vdd  0    0      ra2_[4:0]  rd2_[31:0]
++           0    clk  werf_reset  wa[4:0]    wd[31:0]
++ $memory width=32 nlocations=32 contents=(
++   0 0 0 0 0 0 0 0
++   0 0 0 0 0 0 0 0
++   0 0 0 0 0 0 0 0
++   0 0 0 0 0 0 0 0
++ )
+
+
+*******************************************************************************
+* TO-DO: Double check the alufn codes
+*******************************************************************************
+Xcontrol  vdd  0  0  z opcode[5:0]  control[13:0]
++ $memory width=14 nlocations=128 contents=(
++   0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000
++   0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000
++   0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000
++   0b00011010000001 0b00110010000010 0b11000000000000 0b10000000000001 0b11000000000000 0b00000000000001 0b01000000000001 0b11000000000000
++   0b00000110000001 0b00000110000101 0b11000000000000 0b11000000000000 0b00000110010001 0b00000110010101 0b00000110011001 0b11000000000000
++   0b00000110100001 0b00000110100101 0b00000110101001 0b11000000000000 0b00000110110001 0b00000110110101 0b00000110111001 0b11000000000000
++   0b00010111000001 0b00010111000101 0b11000000000000 0b11000000000000 0b00010111010001 0b00010111010101 0b00010111011001 0b11000000000000
++   0b00010111100001 0b00010111100101 0b00010111101001 0b11000000000000 0b00010111110001 0b00010111110101 0b00010111111101 0b11000000000000
++
++   0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000
++   0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000
++   0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000 0b11000000000000
++   0b00011010000001 0b00110010000010 0b11000000000000 0b10000000000001 0b11000000000000 0b00000000000001 0b01000000000001 0b11000000000000
++   0b00000100000001 0b00000100000101 0b11000000000000 0b11000000000000 0b00000111001101 0b00000111010101 0b00000111111101 0b11000000000000
++   0b00000101100001 0b00000101111001 0b00000101011001 0b11000000000000 0b00000110000001 0b00000110000101 0b00000110001101 0b11000000000000
++   0b00010100000001 0b00010100000101 0b11000000000000 0b11000000000000 0b00010111001101 0b00010111110101 0b00010111111101 0b11000000000000
++   0b00010101100001 0b00010101111001 0b00010101011001 0b11000000000000 0b00010110000001 0b00010110000101 0b00010110001101 0b11000000000000
++ )
+
+*******************************************************************************
+* Helper subckt to facilitate multi-bit joins.
+*******************************************************************************
+.subckt join S T
+  .connect S T
+.ends
+
+*******************************************************************************
+* The following .connect statements define what control signal goes to which
+* of the 14 bits of the control ROM's output. The bits are ordered as they
+* appear in the control logic diagram of your 50.01 slides.
+*******************************************************************************
+Xjcontrola control[13:12] pcsel[1:0] join
+Xjcontrolb control11      ra2sel     join
+Xjcontrolc control10      bsel       join
+Xjcontrold control[9:8]   wdsel[1:0] join
+Xjcontrole control[7:2]   alufn[5:0] join
+Xjcontrolf control1       wr         join
+Xjcontrolg control0       werf       join
+
+*******************************************************************************
+* Also connect our instruction signal lines to our opcode, rc, ra, rb, and c.
+*******************************************************************************
+Xjinsta inst[31:26] opcode[5:0] join
+Xjinstb inst[25:21] rc[4:0]     join
+Xjinstc inst[20:16] ra[4:0]     join
+Xjinstd inst[15:11] rb[4:0]     join
+Xjinste inst[15:0]  c[15:0]     join
+
+*******************************************************************************
+* Temporarily connect pc[] to the predefined clocks so that we can view each
+* instruction in sequence.
+* Note that you will need to replace this with a real program counter circuit
+* in the final lab!
+*******************************************************************************
+Xjpc clk[8:2] pc[8:2] join
+.connect 0 pc[1:0]
+
+*******************************************************************************
+* Temporarily connect other undefined signals.
+* Note that you will need to remove these signals from this section once you
+* connect them elsewhere!
+*******************************************************************************
+.connect vdd clk ra1_[4:0] ra2_[4:0] wa[4:0] wd[31:0] mema[8:0] memwd[31:0]
+.connect 0 z
+
+*******************************************************************************
+* Plot some signals together (or else we won't have enough space in the plot
+* window)
+*******************************************************************************
+Xjdisplaya ra2_b_wdsel[3:0] ra2sel bsel wdsel[1:0] join
+Xjdisplayb wr_werf[1:0]     wr werf                join
+
+*******************************************************************************
+* This section plots the following signals in order:
+* - pc (program counter)
+* - beta operation mnemonic (taken from the 6-bit opcode header)
+* - ra, rb, rc (taken from the rest of the instruction opcode)
+* - c (taken from the last 16 bits of the instruction opcode)
+* - control signals (i.e., output of the control logic)
+* - rd1_ (result of reading address ra1_)
+* - rd2_ (result of reading address ra2_)
+* - wd (value being written to address wa -- but only if wr is 1)
+* - mema (address to access in main memory)
+* - memrd (result of reading address mema)
+* - memwd (value being written to address mema -- but only if werf is 1)
+*
+* Since the circuit is incomplete, the values will be invalid starting from the
+* control signals. After you're done with this current lab, the control signals
+* should be correct. (After you're done with the final lab, everything should
+* be correct!)
+*
+* IMPORTANT: Since z is currently connected to 0, only the first half of your
+*            table of control logic signals is returned. To test the second
+*            half of your table, modify the ".connect 0 z" statement above
+*            this section to ".connect vdd z". (Remember that in the final
+*            lab, z should instead be computed by some circuit instead of
+*            connected to ground or vdd!)
+*******************************************************************************
+.tran 1280ns
+.plot pc[8:0]
+.plot betaop(opcode[5:0])
+.plot d(ra[4:0])
+.plot d(rb[4:0])
+.plot d(rc[4:0])
+.plot sd(c[15:0])
+.plot b(pcsel[1:0])
+.plot b(ra2_b_wdsel[3:0])
+.plot b(alufn[5:0])
+.plot b(wr_werf[1:0])
+.plot sd(rd1_[31:0])
+.plot sd(rd2_[31:0])
+.plot sd(wd[31:0])
+.plot d(mema[8:0])
+.plot sd(memrd[31:0])
+.plot sd(memwd[31:0])
